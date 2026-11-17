@@ -1,0 +1,6 @@
+{
+  "name": "LiveTalking Studio",
+  "description": "Real-time photorealistic AI human avatar streaming workspace powered by LiveTalking, MuseTalk lip-sync, EdgeTTS neural voice, and WebRTC.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
