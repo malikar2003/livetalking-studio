@@ -1,3 +1,4 @@
+import { fetchJson } from './apiResponse';
 import type { AvatarEmotion, AvatarProfile, WordBoundary } from '../types/avatar';
 
 interface MoodParams {
@@ -623,7 +624,12 @@ export class PreviewAvatarEngine {
     this.interrupt();
 
     const startedAt = performance.now();
-    const res = await fetch('/api/tts/edge', {
+    const tts = await fetchJson<{
+      provider?: string;
+      audioBase64?: string;
+      boundaries?: WordBoundary[];
+      latencyMs?: number;
+    }>('/api/tts/edge', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -634,7 +640,7 @@ export class PreviewAvatarEngine {
       }),
     });
 
-    const data = await res.json();
+    const data = tts.data;
 
     if (
       data?.provider === 'edgetts' &&

@@ -25,6 +25,7 @@ import {
   type ProbeResult,
   type RemoteSessionHandle,
 } from './services/livetalkingClient';
+import { fetchJson } from './services/apiResponse';
 import { PreviewAvatarEngine } from './services/previewAvatarEngine';
 import {
   createBrowserSpeechRecognition,
@@ -309,7 +310,7 @@ export default function App() {
     setStatusNote('Saving expression portrait...');
     try {
       const imageBase64 = await readFileAsDataUrl(file);
-      const res = await fetch('/api/avatar/expression', {
+      const res = await fetchJson<{ error?: string }>('/api/avatar/expression', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -318,8 +319,9 @@ export default function App() {
           imageBase64,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Could not save the expression portrait.');
+      if (!res.ok) {
+        throw new Error(res.error || 'Could not save the expression portrait.');
+      }
       await previewEngineRef.current?.refreshExpressions();
       setStatusNote(`${getEmotionPreset(targetEmotion).label} portrait saved. Expression updated.`);
     } catch (err) {
@@ -334,16 +336,18 @@ export default function App() {
     try {
       const blob = await fetch(selectedAvatar.imageUrl).then((res) => res.blob());
       const referenceBase64 = await readFileAsDataUrl(blob);
-      const res = await fetch('/api/avatar/generate-emotions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ avatarId: selectedAvatar.id, referenceBase64 }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Expression generation failed.');
+      const res = await fetchJson<{ results?: Array<{ ok?: boolean }> }>(
+        '/api/avatar/generate-emotions',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ avatarId: selectedAvatar.id, referenceBase64 }),
+        },
+      );
+      if (!res.ok) throw new Error(res.error || 'Expression generation failed.');
       await previewEngineRef.current?.refreshExpressions();
-      const done = Array.isArray(data.results)
-        ? data.results.filter((item: { ok?: boolean }) => item.ok).length
+      const done = Array.isArray(res.data?.results)
+        ? res.data.results.filter((item) => item.ok).length
         : 0;
       setStatusNote(
         `Generated ${done}/4 real expression portraits for ${selectedAvatar.name}.`,

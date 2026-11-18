@@ -1,3 +1,5 @@
+import { fetchJson } from './apiResponse';
+
 export interface BackendHealth {
   status: string;
   liveTalkingUrl: string;
@@ -21,11 +23,11 @@ export interface ChatResolution {
 }
 
 export async function fetchBackendHealth(): Promise<BackendHealth> {
-  const res = await fetch('/api/health');
-  if (!res.ok) {
+  const res = await fetchJson<BackendHealth>('/api/health');
+  if (!res.ok || !res.data) {
     throw new Error('Failed to load backend health status.');
   }
-  return res.json();
+  return res.data;
 }
 
 /**
@@ -47,7 +49,12 @@ export async function resolveSpeechPayload(params: {
     };
   }
 
-  const res = await fetch('/api/chat', {
+  const reply = await fetchJson<{
+    configured?: boolean;
+    reply?: string;
+    detail?: string;
+    error?: string;
+  }>('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -57,21 +64,22 @@ export async function resolveSpeechPayload(params: {
     }),
   });
 
-  const data = await res.json();
+  const data = reply.data;
 
-  if (!data?.configured) {
+  if (!reply.ok || !data?.configured) {
     return {
       textToSpeak: params.inputText.trim(),
       source: 'echo-fixed',
       openaiConfigured: false,
       notice:
         data?.detail ||
-        'OPENAI_API_KEY not configured yet. Falling back to Echo mode with your text.',
+        reply.error ||
+        'AI chat backend is unavailable. Add an OpenAI key and run the Express server to enable replies.',
     };
   }
 
-  if (!res.ok || !data?.reply) {
-    throw new Error(data?.error || 'OpenAI chat endpoint did not return a reply.');
+  if (!data.reply) {
+    throw new Error(data.error || 'OpenAI chat endpoint did not return a reply.');
   }
 
   return {

@@ -1,3 +1,4 @@
+import { fetchJson } from './apiResponse';
 import type { WebRTCStatsSnapshot } from '../types/avatar';
 
 export interface RemoteSessionHandle {
@@ -16,12 +17,18 @@ export interface ProbeResult {
 }
 
 export async function probeLiveTalkingServer(serverUrl: string): Promise<ProbeResult> {
-  const res = await fetch('/api/livetalking/probe', {
+  const res = await fetchJson<ProbeResult>('/api/livetalking/probe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ serverUrl }),
   });
-  return res.json();
+  if (res.data) return res.data;
+  return {
+    reachable: false,
+    serverUrl,
+    latencyMs: 0,
+    detail: res.error || 'Backend API is not available on this deployment.',
+  };
 }
 
 export async function connectRemoteWebRTC(
@@ -69,7 +76,13 @@ export async function connectRemoteWebRTC(
     throw new Error('Failed to create local SDP offer.');
   }
 
-  const response = await fetch('/api/livetalking/offer', {
+  const response = await fetchJson<{
+    sdp?: string;
+    type?: string;
+    sessionid?: number;
+    sessionId?: number;
+    error?: string;
+  }>('/api/livetalking/offer', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -79,16 +92,16 @@ export async function connectRemoteWebRTC(
     }),
   });
 
-  const data = await response.json();
-  if (!response.ok) {
+  const data = response.data;
+  if (!response.ok || !data) {
     pc.close();
-    throw new Error(data?.error || 'LiveTalking /offer negotiation failed.');
+    throw new Error(response.error || 'LiveTalking /offer negotiation failed.');
   }
 
   await pc.setRemoteDescription(
     new RTCSessionDescription({
       sdp: data.sdp,
-      type: data.type || 'answer',
+      type: (data.type || 'answer') as RTCSdpType,
     }),
   );
 
@@ -112,7 +125,7 @@ export async function sendHumanSpeak(params: {
   type: 'echo' | 'chat';
   interrupt?: boolean;
 }): Promise<unknown> {
-  const res = await fetch('/api/livetalking/human', {
+  const res = await fetchJson<Record<string, unknown>>('/api/livetalking/human', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -124,11 +137,10 @@ export async function sendHumanSpeak(params: {
     }),
   });
 
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data?.error || 'Failed to send /human request to LiveTalking.');
+  if (!res.ok || !res.data) {
+    throw new Error(res.error || 'Failed to send /human request to LiveTalking.');
   }
-  return data;
+  return res.data;
 }
 
 export async function interruptLiveTalking(serverUrl: string, sessionId: number): Promise<void> {
