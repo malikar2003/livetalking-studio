@@ -9,22 +9,18 @@ export default function AccessPage() {
   const router = useRouter();
   const [busy, setBusy] = useState("");
 
-  const enter = (username) => {
+  const enter = () => {
     if (busy) return;
     setBusy("Signing in…");
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem("demoUser", username || "Guest");
-    }
-    router.push("/areas");
+    router.push("/persona");
   };
 
   const submitLogin = (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    enter(String(form.get("login-id") || "").trim() || "Guest");
+    enter();
   };
 
-  const startSsoLogin = () => enter("SSO User");
+  const startSsoLogin = () => enter();
 
   return (
     <main className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden px-4 py-10 font-[family-name:var(--font-lato)] text-white">

@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
   Volume2,
@@ -46,8 +45,6 @@ const TIPS = [
 ];
 
 export default function PreparePage() {
-  const router = useRouter();
-
   return (
     <main className="relative min-h-[100dvh] overflow-hidden font-[family-name:var(--font-lato)] text-white">
       <Image
@@ -108,7 +105,6 @@ export default function PreparePage() {
 
         <button
           type="button"
-          onClick={() => router.push("/brief")}
           className="mt-7 inline-flex h-10 items-center gap-2 rounded-lg bg-gradient-to-r from-[#125ce8] via-[#0969f5] to-[#006bff] px-6 text-[13px] font-semibold text-white shadow-[0_5px_18px_rgba(0,92,235,0.25)] transition hover:brightness-110 active:scale-[0.99]"
         >
           Start Conversation
