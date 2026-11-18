@@ -1,30 +1,30 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 
-/**
- * Login screen ported from the Avada tour app.
- * UI-only: wire submitLogin/startSsoLogin to your auth backend when available.
- */
+/** Direct demo login: any credentials are accepted, no backend required. */
 export default function AccessPage() {
+  const router = useRouter();
   const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
 
-  const submitLogin = async (event) => {
-    event.preventDefault();
+  const enter = (username) => {
     if (busy) return;
-    setError("");
     setBusy("Signing in…");
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    setBusy("");
-    setError("Demo mode — connect the login API to enable sign-in.");
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("demoUser", username || "Guest");
+    }
+    router.push("/areas");
   };
 
-  const startSsoLogin = () => {
-    if (busy) return;
-    setError("SSO is not configured in this starter.");
+  const submitLogin = (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    enter(String(form.get("login-id") || "").trim() || "Guest");
   };
+
+  const startSsoLogin = () => enter("SSO User");
 
   return (
     <main className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden px-4 py-10 font-[family-name:var(--font-lato)] text-white">
@@ -136,11 +136,11 @@ export default function AccessPage() {
           </button>
 
           <p
-            className={`mt-3 min-h-4 text-center text-[11px] ${error ? "text-[#ff8b96]" : "text-white/50"}`}
+            className="mt-3 min-h-4 text-center text-[11px] text-white/50"
             role="status"
             aria-live="polite"
           >
-            {error || busy}
+            {busy}
           </p>
         </div>
       </section>
