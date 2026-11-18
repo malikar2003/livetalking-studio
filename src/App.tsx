@@ -219,8 +219,12 @@ export default function App() {
       } catch (err) {
         const message =
           err instanceof Error ? err.message : 'Unable to establish WebRTC stream.';
+        const hint =
+          targetPipeline === 'livetalking-remote'
+            ? ' LiveTalking GPU is a separate server (default http://127.0.0.1:8010). Start it, or switch to Browser WebRTC in the Streaming Pipeline panel.'
+            : '';
         setConnectionState('error');
-        setErrorMessage(message);
+        setErrorMessage(message + hint);
         return false;
       }
     },

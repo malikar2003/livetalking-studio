@@ -176,7 +176,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 <span>
                   {probeResult.reachable
                     ? `Server reachable (${probeResult.latencyMs} ms)`
-                    : `Not reachable at ${probeResult.serverUrl}. Start LiveTalking or switch to Browser WebRTC.`}
+                    : `Not reachable at ${probeResult.serverUrl}${probeResult.detail ? ` (${probeResult.detail})` : ''}. Start LiveTalking or switch to Browser WebRTC.`}
                 </span>
               </div>
             )}
