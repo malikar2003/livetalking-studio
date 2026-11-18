@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Volume2, VolumeX, Square, Video, User } from 'lucide-react';
-import type {
-  AvatarProfile,
-  ConnectionState,
-  PipelineTarget,
-  WebRTCStatsSnapshot,
+import {
+  getEmotionPreset,
+  type AvatarEmotion,
+  type AvatarProfile,
+  type ConnectionState,
+  type PipelineTarget,
+  type WebRTCStatsSnapshot,
 } from '../types/avatar';
 
 interface AvatarStageProps {
@@ -15,6 +17,7 @@ interface AvatarStageProps {
   isSpeaking: boolean;
   activeCaption: string;
   activeWord: string;
+  emotion: AvatarEmotion;
   muted: boolean;
   spectrum: number[];
   stats: WebRTCStatsSnapshot;
@@ -32,6 +35,7 @@ export const AvatarStage: React.FC<AvatarStageProps> = ({
   isSpeaking,
   activeCaption,
   activeWord,
+  emotion,
   muted,
   spectrum,
   stats,
@@ -62,6 +66,10 @@ export const AvatarStage: React.FC<AvatarStageProps> = ({
             {pipeline === 'livetalking-remote'
               ? 'LiveTalking + MuseTalk'
               : 'Browser WebRTC Preview'}
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>
+            {getEmotionPreset(emotion).emoji} {getEmotionPreset(emotion).label}
           </span>
         </div>
 

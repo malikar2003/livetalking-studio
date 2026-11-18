@@ -7,6 +7,8 @@ import { SetupGuideView } from './components/SetupGuideView';
 import {
   AVATAR_PROFILES,
   FIXED_TEST_SCRIPTS,
+  getEmotionPreset,
+  type AvatarEmotion,
   type AvatarProfile,
   type ConnectionState,
   type PipelineTarget,
@@ -45,6 +47,15 @@ const IDLE_STATS: WebRTCStatsSnapshot = {
   resolution: '720×960',
 };
 
+function readFileAsDataUrl(file: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('Could not read the selected image.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('studio');
   const [selectedAvatar, setSelectedAvatar] = useState<AvatarProfile>(AVATAR_PROFILES[0]);
@@ -55,10 +66,13 @@ export default function App() {
 
   const [speechMode, setSpeechMode] = useState<SpeechMode>('echo');
   const [openaiConfigured, setOpenaiConfigured] = useState(false);
+  const [geminiConfigured, setGeminiConfigured] = useState(false);
+  const [generatingEmotions, setGeneratingEmotions] = useState(false);
   const [recognitionLanguage, setRecognitionLanguage] =
     useState<VoiceInputLanguage>('hi-IN');
   const [voiceId, setVoiceId] = useState('hi-IN-SwaraNeural');
   const [rate, setRate] = useState(1.0);
+  const [emotion, setEmotion] = useState<AvatarEmotion>('neutral');
   const [scriptText, setScriptText] = useState(FIXED_TEST_SCRIPTS[0].text);
   const [isListening, setIsListening] = useState(false);
   const [speechInputSupported, setSpeechInputSupported] = useState(false);
@@ -96,6 +110,7 @@ export default function App() {
       .then((health) => {
         if (health.liveTalkingUrl) setServerUrl(health.liveTalkingUrl);
         setOpenaiConfigured(Boolean(health.openaiConfigured));
+        setGeminiConfigured(Boolean(health.geminiConfigured));
       })
       .catch(() => {
         // Ignore transient startup check errors
@@ -187,6 +202,7 @@ export default function App() {
             setActiveWord('');
           }
         });
+        engine.setEmotion(emotion);
 
         const { stream, pc } = await engine.startWebRTCLoopback();
         previewEngineRef.current = engine;
@@ -207,7 +223,7 @@ export default function App() {
         return false;
       }
     },
-    [disconnectStream, pipeline, selectedAvatar, serverUrl],
+    [disconnectStream, emotion, pipeline, selectedAvatar, serverUrl],
   );
 
   // Poll WebRTC RTCStats every second when connected
@@ -280,6 +296,62 @@ export default function App() {
     );
     if (previewEngineRef.current) {
       void previewEngineRef.current.setAvatar(avatar);
+    }
+  };
+
+  const handleSelectEmotion = (nextEmotion: AvatarEmotion) => {
+    setEmotion(nextEmotion);
+    previewEngineRef.current?.setEmotion(nextEmotion);
+  };
+
+  const handleUploadExpression = async (targetEmotion: AvatarEmotion, file: File) => {
+    setErrorMessage(null);
+    setStatusNote('Saving expression portrait...');
+    try {
+      const imageBase64 = await readFileAsDataUrl(file);
+      const res = await fetch('/api/avatar/expression', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          avatarId: selectedAvatar.id,
+          emotion: targetEmotion,
+          imageBase64,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Could not save the expression portrait.');
+      await previewEngineRef.current?.refreshExpressions();
+      setStatusNote(`${getEmotionPreset(targetEmotion).label} portrait saved. Expression updated.`);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Could not save the expression portrait.');
+    }
+  };
+
+  const handleGenerateExpressions = async () => {
+    setGeneratingEmotions(true);
+    setErrorMessage(null);
+    setStatusNote('Generating real expression portraits with Gemini...');
+    try {
+      const blob = await fetch(selectedAvatar.imageUrl).then((res) => res.blob());
+      const referenceBase64 = await readFileAsDataUrl(blob);
+      const res = await fetch('/api/avatar/generate-emotions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ avatarId: selectedAvatar.id, referenceBase64 }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Expression generation failed.');
+      await previewEngineRef.current?.refreshExpressions();
+      const done = Array.isArray(data.results)
+        ? data.results.filter((item: { ok?: boolean }) => item.ok).length
+        : 0;
+      setStatusNote(
+        `Generated ${done}/4 real expression portraits for ${selectedAvatar.name}.`,
+      );
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Expression generation failed.');
+    } finally {
+      setGeneratingEmotions(false);
     }
   };
 
@@ -399,11 +471,12 @@ export default function App() {
           ...prev,
         ]);
       } else if (previewEngineRef.current) {
+        const prosody = getEmotionPreset(emotion);
         const result = await previewEngineRef.current.speakEcho({
           text: spokenText,
           voice: targetVoice,
-          rate,
-          pitch: '+0Hz',
+          rate: Math.min(1.6, Math.max(0.5, rate * prosody.rateMultiplier)),
+          pitch: prosody.pitch,
           muted,
         });
 
@@ -559,6 +632,7 @@ export default function App() {
                   isSpeaking={isSpeaking}
                   activeCaption={activeCaption}
                   activeWord={activeWord}
+                  emotion={emotion}
                   muted={muted}
                   spectrum={spectrum}
                   stats={stats}
@@ -587,6 +661,12 @@ export default function App() {
                   onVoiceChange={setVoiceId}
                   rate={rate}
                   onRateChange={setRate}
+                  emotion={emotion}
+                  onSelectEmotion={handleSelectEmotion}
+                  geminiConfigured={geminiConfigured}
+                  generatingEmotions={generatingEmotions}
+                  onGenerateEmotions={() => void handleGenerateExpressions()}
+                  onUploadExpression={(target, file) => void handleUploadExpression(target, file)}
                   scriptText={scriptText}
                   onScriptTextChange={setScriptText}
                   connectionState={connectionState}

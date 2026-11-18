@@ -2,6 +2,7 @@ export interface BackendHealth {
   status: string;
   liveTalkingUrl: string;
   openaiConfigured: boolean;
+  geminiConfigured: boolean;
   defaultModel: string;
   defaultTts: string;
   defaultMode: string;

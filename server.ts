@@ -1,8 +1,10 @@
 import dotenv from 'dotenv';
 import express from 'express';
+import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
+import { GoogleGenAI } from '@google/genai';
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 
 dotenv.config();
@@ -12,6 +14,22 @@ const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT) || 3000;
 const DEFAULT_LIVETALKING_URL = process.env.LIVETALKING_SERVER_URL || 'http://127.0.0.1:8010';
+const EXPRESSION_DIR = path.resolve(__dirname, 'data', 'expressions');
+const EXPRESSION_AVATARS = ['elena', 'marcus', 'sofia'] as const;
+const EXPRESSION_EMOTIONS = ['happy', 'angry', 'sad', 'surprised'] as const;
+
+type ExpressionAvatar = (typeof EXPRESSION_AVATARS)[number];
+type ExpressionEmotion = (typeof EXPRESSION_EMOTIONS)[number];
+
+const EXPRESSION_PROMPTS: Record<ExpressionEmotion, string> = {
+  happy:
+    'a warm genuine smile, slightly raised cheeks, softened eyes, friendly upbeat look',
+  angry:
+    'an angry expression, lowered furrowed brows, narrowed intense eyes, firm tight mouth, stern look',
+  sad: 'a sad expression, drooping eyelids, slightly raised inner brows, sorrowful eyes, somber look',
+  surprised:
+    'a surprised expression, raised eyebrows, wide open eyes, slightly parted lips, amazed look',
+};
 
 function escapeXml(input: string): string {
   return input
@@ -32,13 +50,15 @@ function normalizeServerUrl(rawUrl?: string): string {
 
 async function createApp() {
   const app = express();
-  app.use(express.json({ limit: '2mb' }));
+  app.use(express.json({ limit: '8mb' }));
+  app.use('/expressions', express.static(EXPRESSION_DIR));
 
   app.get('/api/health', (_req, res) => {
     res.json({
       status: 'ok',
       liveTalkingUrl: DEFAULT_LIVETALKING_URL,
       openaiConfigured: Boolean(process.env.OPENAI_API_KEY),
+      geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
       defaultModel: 'musetalk',
       defaultTts: 'edgetts',
       defaultMode: 'echo',
@@ -213,6 +233,98 @@ async function createApp() {
         detail: err instanceof Error ? err.message : 'Network error',
       });
     }
+  });
+
+  app.post('/api/avatar/expression', async (req, res) => {
+    const { avatarId, emotion, imageBase64 } = req.body ?? {};
+    if (
+      !EXPRESSION_AVATARS.includes(avatarId) ||
+      !EXPRESSION_EMOTIONS.includes(emotion) ||
+      typeof imageBase64 !== 'string' ||
+      imageBase64.length < 100
+    ) {
+      res.status(400).json({ error: 'Valid avatarId, emotion and imageBase64 are required.' });
+      return;
+    }
+
+    try {
+      const raw = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
+      await mkdir(EXPRESSION_DIR, { recursive: true });
+      const fileName = `${avatarId}_${emotion}.jpg`;
+      await writeFile(path.join(EXPRESSION_DIR, fileName), Buffer.from(raw, 'base64'));
+      res.json({ ok: true, url: `/expressions/${fileName}` });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Failed to save expression portrait.',
+      });
+    }
+  });
+
+  app.post('/api/avatar/generate-emotions', async (req, res) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      res.status(400).json({
+        error:
+          'GEMINI_API_KEY is not set. Add it to the project .env file and restart the app to generate real expression portraits.',
+      });
+      return;
+    }
+
+    const { avatarId, referenceBase64 } = req.body ?? {};
+    if (!EXPRESSION_AVATARS.includes(avatarId) || typeof referenceBase64 !== 'string') {
+      res.status(400).json({ error: 'Valid avatarId and referenceBase64 are required.' });
+      return;
+    }
+
+    const reference = referenceBase64.includes(',')
+      ? referenceBase64.split(',')[1]
+      : referenceBase64;
+    const ai = new GoogleGenAI({ apiKey });
+    const results: Array<{ emotion: ExpressionEmotion; ok: boolean; url?: string; error?: string }> =
+      [];
+
+    try {
+      await mkdir(EXPRESSION_DIR, { recursive: true });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Cannot create storage.' });
+      return;
+    }
+
+    for (const emotion of EXPRESSION_EMOTIONS) {
+      try {
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash-image',
+          contents: [
+            {
+              text:
+                `Edit the attached studio portrait so the SAME person shows ${EXPRESSION_PROMPTS[emotion]}. ` +
+                'Keep the exact same identity, face shape, age, hair, outfit, camera angle, framing, lighting and background. ' +
+                'Change only the eyebrows, eyes and facial muscles. Keep the mouth closed and neutral so lip-sync still works. ' +
+                'Photorealistic, no text, no watermark.',
+            },
+            { inlineData: { mimeType: 'image/jpeg', data: reference } },
+          ],
+        });
+
+        const parts = response.candidates?.[0]?.content?.parts ?? [];
+        const imageData = parts.find((part) => part.inlineData?.data)?.inlineData?.data;
+        if (!imageData) {
+          throw new Error('The image model returned no picture for this expression.');
+        }
+
+        const fileName = `${avatarId}_${emotion}.jpg`;
+        await writeFile(path.join(EXPRESSION_DIR, fileName), Buffer.from(imageData, 'base64'));
+        results.push({ emotion, ok: true, url: `/expressions/${fileName}` });
+      } catch (err) {
+        results.push({
+          emotion,
+          ok: false,
+          error: err instanceof Error ? err.message.slice(0, 200) : 'Generation failed.',
+        });
+      }
+    }
+
+    res.json({ ok: results.every((item) => item.ok), results });
   });
 
   app.post('/api/tts/edge', async (req, res) => {

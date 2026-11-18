@@ -8,11 +8,16 @@ import {
   Lock,
   Mic,
   MicOff,
+  ImagePlus,
+  Sparkles,
 } from 'lucide-react';
 import {
   AVATAR_PROFILES,
   EDGE_VOICES,
+  EMOTION_PRESETS,
   FIXED_TEST_SCRIPTS,
+  getEmotionPreset,
+  type AvatarEmotion,
   type AvatarProfile,
   type ConnectionState,
   type PipelineTarget,
@@ -38,6 +43,12 @@ interface ControlPanelProps {
   onVoiceChange: (voiceId: string) => void;
   rate: number;
   onRateChange: (rate: number) => void;
+  emotion: AvatarEmotion;
+  onSelectEmotion: (emotion: AvatarEmotion) => void;
+  geminiConfigured: boolean;
+  generatingEmotions: boolean;
+  onGenerateEmotions: () => void;
+  onUploadExpression: (emotion: AvatarEmotion, file: File) => void;
   scriptText: string;
   onScriptTextChange: (text: string) => void;
   connectionState: ConnectionState;
@@ -69,6 +80,12 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onVoiceChange,
   rate,
   onRateChange,
+  emotion,
+  onSelectEmotion,
+  geminiConfigured,
+  generatingEmotions,
+  onGenerateEmotions,
+  onUploadExpression,
   scriptText,
   onScriptTextChange,
   connectionState,
@@ -305,7 +322,92 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         </div>
       </div>
 
-      {/* 5. Fixed Script & Echo Dispatch */}
+      {/* 5. Emotion / Expression */}
+      <div className="p-5 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="font-display text-sm font-semibold text-slate-100">
+            Emotion / Expression
+          </h2>
+          <span className="font-mono text-xs text-slate-400">
+            {getEmotionPreset(emotion).emoji} {getEmotionPreset(emotion).label}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-5 gap-1.5">
+          {EMOTION_PRESETS.map((preset) => {
+            const active = preset.id === emotion;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => onSelectEmotion(preset.id)}
+                title={preset.hint}
+                aria-pressed={active}
+                className={`flex flex-col items-center gap-1 rounded-lg border px-1 py-2 text-[11px] font-medium transition-colors cursor-pointer ${
+                  active
+                    ? 'border-sky-500 bg-sky-500/10 text-sky-200'
+                    : 'border-slate-800 bg-[#0B0F17] text-slate-400 hover:border-slate-600 hover:text-slate-200'
+                }`}
+              >
+                <span className="text-base leading-none" aria-hidden="true">
+                  {preset.emoji}
+                </span>
+                <span>{preset.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <p className="text-xs leading-relaxed text-slate-400">
+          {getEmotionPreset(emotion).hint}. When a real portrait is available the face itself
+          changes; otherwise only natural head motion, blinking and voice tone change. Facial
+          expressions apply to the Browser WebRTC preview only.
+        </p>
+
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <label className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-medium text-slate-200 transition-colors hover:bg-slate-700 cursor-pointer">
+            <ImagePlus className="h-3.5 w-3.5" />
+            <span>Upload {getEmotionPreset(emotion).label} photo</span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) onUploadExpression(emotion, file);
+                event.target.value = '';
+              }}
+            />
+          </label>
+
+          <button
+            type="button"
+            onClick={onGenerateEmotions}
+            disabled={!geminiConfigured || generatingEmotions}
+            title={
+              geminiConfigured
+                ? `Generate real expression portraits for ${selectedAvatar.name}`
+                : 'Add GEMINI_API_KEY to .env and restart to enable'
+            }
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-medium text-slate-200 transition-colors hover:bg-slate-700 disabled:opacity-45 cursor-pointer"
+          >
+            <Sparkles
+              className={`h-3.5 w-3.5 ${generatingEmotions ? 'animate-pulse' : ''}`}
+            />
+            <span>{generatingEmotions ? 'Generating…' : 'Generate portraits'}</span>
+          </button>
+        </div>
+
+        {!geminiConfigured && (
+          <p className="text-[11px] leading-relaxed text-slate-500">
+            For automatic realistic portraits, add{' '}
+            <code className="text-sky-400">GEMINI_API_KEY</code> to{' '}
+            <code className="text-sky-400">.env</code>, restart the app, then press Generate.
+          </p>
+        )}
+      </div>
+
+      {/* 6. Fixed Script & Echo Dispatch */}
       <div className="p-5 space-y-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="font-display text-sm font-semibold text-slate-100">

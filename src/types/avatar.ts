@@ -23,6 +23,7 @@ export interface AvatarProfile {
   recommendedVoice: string;
   liveTalkingAvatarId: string;
   calibration: FaceCalibration;
+  emotionImages?: Partial<Record<AvatarEmotion, string>>;
 }
 
 export interface EdgeVoiceOption {
@@ -64,6 +65,126 @@ export interface WordBoundary {
   text: string;
 }
 
+export type AvatarEmotion = 'neutral' | 'happy' | 'angry' | 'sad' | 'surprised';
+
+export interface EmotionVisuals {
+  browRaise: number;
+  browFurrow: number;
+  browInner: number;
+  eyeSquint: number;
+  eyeWide: number;
+  smile: number;
+  frown: number;
+  jawTension: number;
+}
+
+export interface EmotionPreset {
+  id: AvatarEmotion;
+  label: string;
+  emoji: string;
+  hint: string;
+  rateMultiplier: number;
+  pitch: string;
+  visuals: EmotionVisuals;
+}
+
+export const EMOTION_PRESETS: EmotionPreset[] = [
+  {
+    id: 'neutral',
+    label: 'Neutral',
+    emoji: '😐',
+    hint: 'Default relaxed expression and voice',
+    rateMultiplier: 1,
+    pitch: '+0Hz',
+    visuals: {
+      browRaise: 0,
+      browFurrow: 0,
+      browInner: 0,
+      eyeSquint: 0,
+      eyeWide: 0,
+      smile: 0,
+      frown: 0,
+      jawTension: 0,
+    },
+  },
+  {
+    id: 'happy',
+    label: 'Happy',
+    emoji: '😊',
+    hint: 'Smile corners, softer eyes, brighter voice',
+    rateMultiplier: 1.08,
+    pitch: '+35Hz',
+    visuals: {
+      browRaise: 0.2,
+      browFurrow: 0,
+      browInner: 0,
+      eyeSquint: 0.6,
+      eyeWide: 0,
+      smile: 0.95,
+      frown: 0,
+      jawTension: 0,
+    },
+  },
+  {
+    id: 'angry',
+    label: 'Angry',
+    emoji: '😠',
+    hint: 'Furrowed brows, tight jaw, faster low voice',
+    rateMultiplier: 1.16,
+    pitch: '-35Hz',
+    visuals: {
+      browRaise: 0,
+      browFurrow: 0.9,
+      browInner: 0.85,
+      eyeSquint: 0.65,
+      eyeWide: 0,
+      smile: 0,
+      frown: 0.5,
+      jawTension: 0.75,
+    },
+  },
+  {
+    id: 'sad',
+    label: 'Sad',
+    emoji: '😔',
+    hint: 'Lowered corners, heavy lids, slow soft voice',
+    rateMultiplier: 0.88,
+    pitch: '-22Hz',
+    visuals: {
+      browRaise: 0.45,
+      browFurrow: 0,
+      browInner: 0.3,
+      eyeSquint: 0.35,
+      eyeWide: 0,
+      smile: 0,
+      frown: 0.95,
+      jawTension: 0.25,
+    },
+  },
+  {
+    id: 'surprised',
+    label: 'Surprised',
+    emoji: '😲',
+    hint: 'Raised brows, wide eyes, lifted voice',
+    rateMultiplier: 1.05,
+    pitch: '+20Hz',
+    visuals: {
+      browRaise: 1,
+      browFurrow: 0,
+      browInner: 0,
+      eyeSquint: 0,
+      eyeWide: 0.9,
+      smile: 0,
+      frown: 0,
+      jawTension: 0,
+    },
+  },
+];
+
+export function getEmotionPreset(id: AvatarEmotion): EmotionPreset {
+  return EMOTION_PRESETS.find((preset) => preset.id === id) ?? EMOTION_PRESETS[0];
+}
+
 export const AVATAR_PROFILES: AvatarProfile[] = [
   {
     id: 'elena',
@@ -74,6 +195,12 @@ export const AVATAR_PROFILES: AvatarProfile[] = [
     speakingImageUrl: '/src/assets/images/avatar_elena_speaking_1794913274371.jpg',
     recommendedVoice: 'en-US-JennyNeural',
     liveTalkingAvatarId: 'musetalk_elena_v1',
+    emotionImages: {
+      happy: '/expressions/elena_happy.jpg',
+      angry: '/expressions/elena_angry.jpg',
+      sad: '/expressions/elena_sad.jpg',
+      surprised: '/expressions/elena_surprised.jpg',
+    },
     calibration: {
       mouthX: 0.512,
       mouthY: 0.435,
@@ -94,6 +221,12 @@ export const AVATAR_PROFILES: AvatarProfile[] = [
     speakingImageUrl: '/src/assets/images/avatar_marcus_speaking_1794913274082.jpg',
     recommendedVoice: 'en-US-GuyNeural',
     liveTalkingAvatarId: 'musetalk_marcus_v1',
+    emotionImages: {
+      happy: '/expressions/marcus_happy.jpg',
+      angry: '/expressions/marcus_angry.jpg',
+      sad: '/expressions/marcus_sad.jpg',
+      surprised: '/expressions/marcus_surprised.jpg',
+    },
     calibration: {
       mouthX: 0.506,
       mouthY: 0.408,
@@ -114,6 +247,12 @@ export const AVATAR_PROFILES: AvatarProfile[] = [
     speakingImageUrl: '/src/assets/images/avatar_sofia_speaking_1794913274917.jpg',
     recommendedVoice: 'en-US-AriaNeural',
     liveTalkingAvatarId: 'musetalk_sofia_v1',
+    emotionImages: {
+      happy: '/expressions/sofia_happy.jpg',
+      angry: '/expressions/sofia_angry.jpg',
+      sad: '/expressions/sofia_sad.jpg',
+      surprised: '/expressions/sofia_surprised.jpg',
+    },
     calibration: {
       mouthX: 0.506,
       mouthY: 0.423,

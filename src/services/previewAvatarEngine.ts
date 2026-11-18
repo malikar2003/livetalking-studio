@@ -1,4 +1,49 @@
-import type { AvatarProfile, WordBoundary } from '../types/avatar';
+import type { AvatarEmotion, AvatarProfile, WordBoundary } from '../types/avatar';
+
+interface MoodParams {
+  sway: number;
+  tilt: number;
+  blink: number;
+  speechBoost: number;
+  tint: [number, number, number];
+  contrast: number;
+}
+
+const MOOD_PARAMS: Record<AvatarEmotion, MoodParams> = {
+  neutral: { sway: 1, tilt: 1, blink: 1, speechBoost: 1, tint: [1, 1, 1], contrast: 1 },
+  happy: {
+    sway: 1.18,
+    tilt: 1.2,
+    blink: 0.9,
+    speechBoost: 1.1,
+    tint: [1.025, 1.008, 0.975],
+    contrast: 1.025,
+  },
+  angry: {
+    sway: 0.7,
+    tilt: 0.55,
+    blink: 0.55,
+    speechBoost: 1.25,
+    tint: [1.015, 0.965, 0.945],
+    contrast: 1.09,
+  },
+  sad: {
+    sway: 0.62,
+    tilt: 0.7,
+    blink: 1.45,
+    speechBoost: 0.8,
+    tint: [0.965, 0.98, 1.035],
+    contrast: 0.95,
+  },
+  surprised: {
+    sway: 0.95,
+    tilt: 1.15,
+    blink: 0.45,
+    speechBoost: 1.15,
+    tint: [1.01, 1.01, 1.02],
+    contrast: 1.04,
+  },
+};
 
 export interface PreviewSpeakResult {
   provider: 'edgetts' | 'browser-fallback';
@@ -36,6 +81,10 @@ uniform float u_eyeWidth;
 uniform float u_blink;
 uniform float u_hasMidTex;
 uniform float u_hasOpenTex;
+uniform sampler2D u_imageClosedNext;
+uniform float u_emotionMix;
+uniform vec3 u_moodTint;
+uniform float u_moodContrast;
 
 in vec2 v_uv;
 out vec4 outColor;
@@ -84,7 +133,11 @@ void main() {
   p.y -= blinkShift;
 
   vec2 clampedP = clamp(p, 0.001, 0.999);
-  vec3 closedColor = texture(u_imageClosed, clampedP).rgb;
+  vec3 closedColor = mix(
+    texture(u_imageClosed, clampedP).rgb,
+    texture(u_imageClosedNext, clampedP).rgb,
+    clamp(u_emotionMix, 0.0, 1.0)
+  );
   vec3 finalColor = closedColor;
 
   if (u_open > 0.01 && (u_hasMidTex > 0.5 || u_hasOpenTex > 0.5)) {
@@ -134,6 +187,10 @@ void main() {
     finalColor *= (1.0 - crease);
   }
 
+  // Subtle cinematic grade that supports the mood without distorting the face.
+  finalColor = (finalColor - 0.5) * u_moodContrast + 0.5;
+  finalColor = clamp(finalColor * u_moodTint, 0.0, 1.0);
+
   outColor = vec4(finalColor, 1.0);
 }`;
 
@@ -143,11 +200,18 @@ export class PreviewAvatarEngine {
   private fallbackCtx: CanvasRenderingContext2D | null = null;
   private program: WebGLProgram | null = null;
   private closedTexture: WebGLTexture | null = null;
+  private closedNextTexture: WebGLTexture | null = null;
   private midTexture: WebGLTexture | null = null;
   private openTexture: WebGLTexture | null = null;
   private uniforms: Record<string, WebGLUniformLocation | null> = {};
 
   private avatar: AvatarProfile;
+  private emotion: AvatarEmotion = 'neutral';
+  private mood: MoodParams = { ...MOOD_PARAMS.neutral, tint: [...MOOD_PARAMS.neutral.tint] };
+  private expressionImages: Partial<Record<AvatarEmotion, HTMLImageElement>> = {};
+  private emotionMix = 0;
+  private transitionImage: HTMLImageElement | null = null;
+  private fallbackNextImg: HTMLImageElement | null = null;
   private portraitImg: HTMLImageElement | null = null;
   private midImg: HTMLImageElement | null = null;
   private speakingImg: HTMLImageElement | null = null;
@@ -275,12 +339,17 @@ export class PreviewAvatarEngine {
       'u_blink',
       'u_hasMidTex',
       'u_hasOpenTex',
+      'u_imageClosedNext',
+      'u_emotionMix',
+      'u_moodTint',
+      'u_moodContrast',
     ];
     for (const name of names) {
       this.uniforms[name] = gl.getUniformLocation(program, name);
     }
 
     this.closedTexture = this.createConfiguredTexture(gl);
+    this.closedNextTexture = this.createConfiguredTexture(gl);
     this.midTexture = this.createConfiguredTexture(gl);
     this.openTexture = this.createConfiguredTexture(gl);
 
@@ -297,6 +366,70 @@ export class PreviewAvatarEngine {
   async setAvatar(avatar: AvatarProfile): Promise<void> {
     this.avatar = avatar;
     await this.loadPortraitSet(avatar);
+  }
+
+  async refreshExpressions(): Promise<void> {
+    const urls = this.avatar.emotionImages ?? {};
+    const loaded = await Promise.all(
+      (Object.keys(urls) as AvatarEmotion[]).map(async (key) => {
+        const url = urls[key];
+        if (!url) return [key, null] as const;
+        return [
+          key,
+          await this.loadImage(`${url}${url.includes('?') ? '&' : '?'}v=${Date.now()}`),
+        ] as const;
+      }),
+    );
+    const images: Partial<Record<AvatarEmotion, HTMLImageElement>> = {};
+    for (const [key, img] of loaded) {
+      if (img) images[key] = img;
+    }
+    this.expressionImages = images;
+    this.setEmotion(this.emotion);
+  }
+
+  setEmotion(emotion: AvatarEmotion): void {
+    this.emotion = emotion;
+    const target = this.expressionImages[emotion] ?? this.portraitImg;
+    if (!target) return;
+    if (this.gl && this.closedNextTexture) {
+      this.uploadTexture(this.closedNextTexture, target);
+    }
+    this.fallbackNextImg = target;
+    this.transitionImage = target;
+    this.emotionMix = 0;
+  }
+
+  getEmotion(): AvatarEmotion {
+    return this.emotion;
+  }
+
+  private updateMood(): void {
+    const target = MOOD_PARAMS[this.emotion];
+    const k = 0.09;
+    this.mood.sway += (target.sway - this.mood.sway) * k;
+    this.mood.tilt += (target.tilt - this.mood.tilt) * k;
+    this.mood.blink += (target.blink - this.mood.blink) * k;
+    this.mood.speechBoost += (target.speechBoost - this.mood.speechBoost) * k;
+    this.mood.contrast += (target.contrast - this.mood.contrast) * k;
+    for (let i = 0; i < 3; i++) {
+      this.mood.tint[i] += (target.tint[i] - this.mood.tint[i]) * k;
+    }
+  }
+
+  private advanceEmotionTransition(): void {
+    if (!this.transitionImage || this.emotionMix >= 1) return;
+    this.emotionMix = Math.min(1, this.emotionMix + 0.055);
+    if (this.emotionMix < 1) return;
+
+    const target = this.transitionImage;
+    if (this.gl && this.closedTexture) {
+      this.uploadTexture(this.closedTexture, target);
+    }
+    this.portraitImg = target;
+    this.fallbackNextImg = null;
+    this.transitionImage = null;
+    this.emotionMix = 0;
   }
 
   private loadImage(url: string): Promise<HTMLImageElement | null> {
@@ -319,9 +452,14 @@ export class PreviewAvatarEngine {
     this.midImg = mid;
     this.speakingImg = open;
 
-    if (closed) this.uploadTexture(this.closedTexture, closed);
+    if (closed) {
+      this.uploadTexture(this.closedTexture, closed);
+      this.uploadTexture(this.closedNextTexture, closed);
+    }
     if (mid) this.uploadTexture(this.midTexture, mid);
     if (open) this.uploadTexture(this.openTexture, open);
+
+    await this.refreshExpressions();
   }
 
   async startWebRTCLoopback(): Promise<{
@@ -770,10 +908,10 @@ export class PreviewAvatarEngine {
     return { open: this.smoothedOpen, spread: this.smoothedSpread };
   }
 
-  private computeBlink(now: number): number {
+  private computeBlink(now: number, rate = 1): number {
     if (now >= this.blinkNextAt) {
       this.blinkStartedAt = now;
-      this.blinkNextAt = now + 3200 + Math.random() * 2800;
+      this.blinkNextAt = now + (3200 + Math.random() * 2800) / Math.max(0.25, rate);
     }
     const elapsed = now - this.blinkStartedAt;
     if (this.blinkStartedAt > 0 && elapsed < 155) {
@@ -794,16 +932,25 @@ export class PreviewAvatarEngine {
 
     const t = (now - this.startedAt) / 1000;
     const { open, spread } = this.computeSpeechEnvelope(now);
-    const blink = this.computeBlink(now);
+    this.updateMood();
+    this.advanceEmotionTransition();
+    const blink = this.computeBlink(now, this.mood.blink);
 
-    const speechMotionBoost = this.isSpeaking ? 1.12 : 1.0;
+    const speechMotionBoost = (this.isSpeaking ? 1.12 : 1.0) * this.mood.speechBoost;
     const swayXNorm =
-      ((Math.sin(t * 0.78) * 0.5 + Math.sin(t * 1.45) * 0.25) * speechMotionBoost) / w;
+      ((Math.sin(t * 0.78) * 0.5 + Math.sin(t * 1.45) * 0.25) *
+        speechMotionBoost *
+        this.mood.sway) /
+      w;
     const swayYNorm =
-      (Math.sin(t * 1.35) * 0.55 + (this.isSpeaking ? Math.sin(t * 2.4) * 0.3 + open * 0.45 : 0)) /
+      ((Math.sin(t * 1.35) * 0.55 +
+        (this.isSpeaking ? Math.sin(t * 2.4) * 0.3 + open * 0.45 : 0)) *
+        this.mood.sway) /
       h;
     const tiltRad =
-      (Math.sin(t * 0.58) * 0.0011 + Math.sin(t * 1.25) * 0.0005) * speechMotionBoost;
+      (Math.sin(t * 0.58) * 0.0011 + Math.sin(t * 1.25) * 0.0005) *
+      speechMotionBoost *
+      this.mood.tilt;
     const cal = this.avatar.calibration;
 
     if (this.gl && this.program) {
@@ -823,6 +970,18 @@ export class PreviewAvatarEngine {
       gl.bindTexture(gl.TEXTURE_2D, this.openTexture);
       gl.uniform1i(this.uniforms.u_imageOpen, 2);
 
+      gl.activeTexture(gl.TEXTURE3);
+      gl.bindTexture(gl.TEXTURE_2D, this.closedNextTexture);
+      gl.uniform1i(this.uniforms.u_imageClosedNext, 3);
+
+      gl.uniform1f(this.uniforms.u_emotionMix, this.emotionMix);
+      gl.uniform3f(
+        this.uniforms.u_moodTint,
+        this.mood.tint[0],
+        this.mood.tint[1],
+        this.mood.tint[2],
+      );
+      gl.uniform1f(this.uniforms.u_moodContrast, this.mood.contrast);
       gl.uniform1f(this.uniforms.u_hasMidTex, this.midImg ? 1.0 : 0.0);
       gl.uniform1f(this.uniforms.u_hasOpenTex, this.speakingImg ? 1.0 : 0.0);
       gl.uniform2f(this.uniforms.u_resolution, w, h);
@@ -847,6 +1006,11 @@ export class PreviewAvatarEngine {
     if (this.fallbackCtx) {
       this.fallbackCtx.globalAlpha = 1;
       this.fallbackCtx.drawImage(this.portraitImg, 0, 0, w, h);
+      if (this.fallbackNextImg && this.emotionMix > 0) {
+        this.fallbackCtx.globalAlpha = this.emotionMix;
+        this.fallbackCtx.drawImage(this.fallbackNextImg, 0, 0, w, h);
+        this.fallbackCtx.globalAlpha = 1;
+      }
       const targetImg = open <= 0.48 ? this.midImg || this.speakingImg : this.speakingImg || this.midImg;
       if (targetImg && open > 0.02) {
         this.fallbackCtx.save();
