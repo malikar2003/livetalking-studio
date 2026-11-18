@@ -18,7 +18,24 @@ body {
 body {
   background: #0b0f17;
   color: #e2e8f0;
-  font-family: var(--font-lato);
+  font-family: "Lato", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-weight: 600;
+  font-style: normal;
+  font-size: 18px;
+  line-height: 28px;
+  letter-spacing: 0;
+  vertical-align: middle;
+}
+
+/* Required Lato SemiBold text style — reusable where this exact spec is needed. */
+.font-lato-semibold {
+  font-family: "Lato", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600;
+  font-style: normal;
+  font-size: 18px;
+  line-height: 28px;
+  letter-spacing: 0;
+  vertical-align: middle;
 }
 
 .access-field:focus-visible {
