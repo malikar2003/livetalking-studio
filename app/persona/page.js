@@ -5,6 +5,29 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Clock, Check } from "lucide-react";
 
+const CARD_GEOMETRY = {
+  borderRadius: "26.4px",
+  padding: "35.2px",
+  minHeight: "400px",
+  backdropFilter: "blur(26.4px)",
+  WebkitBackdropFilter: "blur(26.4px)",
+  opacity: 1,
+};
+
+const CARD_STYLE_ACTIVE = {
+  ...CARD_GEOMETRY,
+  background:
+    "linear-gradient(180deg, rgba(13, 27, 42, 0.8) 0%, rgba(30, 99, 181, 0.3) 100%)",
+  border: "1.1px solid #26A6FF",
+  boxShadow: "0px 0px 33px 1.1px #26A6FF1A inset",
+};
+
+const CARD_STYLE_IDLE = {
+  ...CARD_GEOMETRY,
+  background: "rgba(12, 21, 36, 0.85)",
+  border: "1.1px solid rgba(255, 255, 255, 0.10)",
+};
+
 const PERSONAS = [
   {
     id: "residential",
@@ -63,7 +86,7 @@ export default function PersonaPage() {
         />
       </header>
 
-      <div className="relative z-10 mx-auto flex min-h-[100dvh] max-w-6xl flex-col items-center justify-center px-4 py-20 text-center">
+      <div className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[1440px] flex-col items-center justify-center px-4 py-20 text-center">
         <h1 className="text-[26px] font-bold tracking-tight sm:text-[30px]">
           Choose Your Customer Persona
         </h1>
@@ -80,11 +103,8 @@ export default function PersonaPage() {
                 key={persona.id}
                 type="button"
                 onClick={() => setSelected(persona.id)}
-                className={`relative flex min-h-[210px] flex-col rounded-xl border p-4 text-left transition sm:p-5 ${
-                  active
-                    ? "border-sky-400/70 bg-gradient-to-b from-[#15395e]/95 to-[#0d1c30]/95 shadow-[0_0_0_1px_rgba(56,189,248,0.25),0_18px_50px_rgba(0,0,0,0.45)]"
-                    : "border-white/10 bg-[#0c1524]/85 backdrop-blur-md hover:border-white/25"
-                }`}
+                style={active ? CARD_STYLE_ACTIVE : CARD_STYLE_IDLE}
+                className="relative flex flex-col text-left transition"
               >
                 <div className="flex items-center justify-between">
                   <span
